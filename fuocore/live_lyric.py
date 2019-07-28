@@ -20,6 +20,7 @@ class LiveLyric(object):
         player.song_changed.connect(live_lyric.on_song_changed)
         player.position_change.connect(live_lyric.on_position_changed)
     """
+
     def __init__(self):
         self.sentence_changed = Signal(str)
 
@@ -46,7 +47,7 @@ class LiveLyric(object):
         if position is None or not self._lyric:
             return
 
-        pos = find_previous(position*1000 + 300, self._pos_list)
+        pos = find_previous(position * 1000 + 300, self._pos_list)
         if pos is not None and pos != self._pos:
             self.current_sentence = self._pos_s_map[pos]
             self._pos = pos

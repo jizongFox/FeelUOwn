@@ -5,7 +5,6 @@ import random
 
 from fuocore.dispatch import Signal
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -215,7 +214,7 @@ class Playlist(object):
                 elif self.playback_mode == PlaybackMode.sequential:
                     next_song = None
             else:
-                next_song = self._get_good_song(base=current_index+1)
+                next_song = self._get_good_song(base=current_index + 1)
         return next_song
 
     @property
@@ -236,7 +235,7 @@ class Playlist(object):
 
 
 class AbstractPlayer(metaclass=ABCMeta):
-    """Player abstrace base class"""
+    """Player abstract base class"""
 
     def __init__(self, playlist=None, **kwargs):
         self._position = 0  # seconds

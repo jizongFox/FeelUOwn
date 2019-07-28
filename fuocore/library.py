@@ -46,6 +46,7 @@ def _extract_and_sort_song_standby_list(song, result_g):
 
 class Library(object):
     """音乐库，管理资源提供方以及资源"""
+
     def __init__(self):
         self._providers = set()
 

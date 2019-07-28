@@ -5,7 +5,6 @@ import logging
 
 from fuocore.media import MultiQualityMixin, Quality
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -79,6 +78,7 @@ class ModelMetadata(object):
 
 class display_property:
     """Model 的展示字段的描述器"""
+
     def __init__(self, name):
         #: display 属性对应的真正属性的名字
         self.name_real = name
@@ -229,11 +229,11 @@ class BaseModel(Model):
             return value
 
         if name in cls.meta.fields \
-           and name not in cls.meta.fields_no_get \
-           and value is None \
-           and cls.meta.allow_get \
-           and self.stage < ModelStage.gotten \
-           and self.exists != ModelExistence.no:
+                and name not in cls.meta.fields_no_get \
+                and value is None \
+                and cls.meta.allow_get \
+                and self.stage < ModelStage.gotten \
+                and self.exists != ModelExistence.no:
 
             # debug snippet: show info of the caller that trigger the model.get call
             #
@@ -250,7 +250,7 @@ class BaseModel(Model):
             obj = cls.get(self.identifier)
             if obj is not None:
                 for field in cls.meta.fields:
-                    if field in ('identifier', ):
+                    if field in ('identifier',):
                         continue
                     # 这里不能使用 getattr，否则有可能会无限 get
                     fv = object.__getattribute__(obj, field)
@@ -329,6 +329,7 @@ class LyricModel(BaseModel):
     :param str content: lyric content
     :param str trans_content: translated lyric content
     """
+
     class Meta:
         model_type = ModelType.lyric.value
         fields = ['song', 'content', 'trans_content']
@@ -414,6 +415,7 @@ class SearchModel(BaseModel):
 
     TODO: support album and artist
     """
+
     class Meta:
         model_type = ModelType.dummy.value
 
@@ -436,6 +438,7 @@ class UserModel(BaseModel):
     :param fav_albums: albums collected by user
     :param fav_artists: artists collected by user
     """
+
     class Meta:
         allow_fav_songs_add = False
         allow_fav_songs_remove = False

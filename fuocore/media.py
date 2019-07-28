@@ -61,7 +61,7 @@ class Quality:
             q_idx = cls._get_index(q, l)
             new_l = [q]
             left = l[:q_idx][::-1]
-            right = l[q_idx+1:]
+            right = l[q_idx + 1:]
             if rule == 'rrl':
                 new_l = right + new_l + left
             elif rule == 'llr':
@@ -124,15 +124,15 @@ class Quality:
 
     class Audio(Mixin, Enum):
         shq = 'shq'  #: super high quality(>320kbps)
-        hq = 'hq'    #: high quality(~=320kbps)
-        sq = 'sq'    #: standard quality(~=200kbps)
-        lq = 'lq'    #: low quality(~=100kbps)
+        hq = 'hq'  #: high quality(~=320kbps)
+        sq = 'sq'  #: standard quality(~=200kbps)
+        lq = 'lq'  #: low quality(~=100kbps)
 
     class Video(Mixin, Enum):
         fhd = 'fhd'  #: full high definition
-        hd = 'hd'    #: high definition
-        sd = 'sd'    #: standard definition
-        ld = 'ld'    #: low definition
+        hd = 'hd'  #: high definition
+        sd = 'sd'  #: standard definition
+        ld = 'ld'  #: low definition
 
 
 class MultiQualityMixin:

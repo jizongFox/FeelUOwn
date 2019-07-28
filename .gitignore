@@ -73,3 +73,8 @@ feeluown.egg-info/
 .pytest_cache/
 *.dat
 htmlcov/
+
+zzz*.py
+/venvs/
+/.mypy_cache/
+/feeluown.egg-info/

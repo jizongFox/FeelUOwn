@@ -92,7 +92,9 @@ class Router(object):
 
             def wrapper(*args, **kwargs):
                 func(*args, **kwargs)
+
             return wrapper
+
         return decorator
 
     def dispatch(self, uri, ctx):

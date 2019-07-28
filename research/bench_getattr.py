@@ -4,7 +4,6 @@
 测试结果：十万次 obj.attr 花费时间是毫秒级，而后者是秒级(10 秒左右)。
 """
 
-
 import asyncio
 import time
 
@@ -28,9 +27,8 @@ async def f():
     for _ in range(0, 100000):
         await loop.run_in_executor(None, lambda: obj.attr)
 
-    print(time.time() - t )
+    print(time.time() - t)
     print(time.process_time() - t_cpu)
-
 
 
 if __name__ == '__main__':

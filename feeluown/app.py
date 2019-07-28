@@ -23,8 +23,8 @@ class App:
     """App 基类"""
 
     DaemonMode = 0x0001  # 开启 daemon
-    GuiMode = 0x0010     # 显示 GUI
-    CliMode = 0x0100     # 命令行模式
+    GuiMode = 0x0010  # 显示 GUI
+    CliMode = 0x0100  # 命令行模式
 
     instance = None
 
@@ -179,11 +179,9 @@ def create_app(config):
             def sizeHint(self):
                 return QSize(1000, 618)
 
-
         bases.append(GuiApp)
 
     if mode & App.CliMode:
-
         class CliApp:
             pass
 
@@ -195,6 +193,7 @@ def create_app(config):
                 base.__init__(self)
             self.mode = mode
             self.initialized = Signal()
+
     app = FApp(mode)
     App.instance = app
     app.config = config

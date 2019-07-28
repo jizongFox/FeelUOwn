@@ -4,7 +4,6 @@ from collections import namedtuple
 
 logger = logging.getLogger(__name__)
 
-
 Field = namedtuple('Field', ('name', 'type_', 'default', 'desc', 'warn'))
 
 

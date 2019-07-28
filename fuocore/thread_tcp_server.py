@@ -22,6 +22,7 @@ class TcpServer(object):
     >>> time.sleep(1)
     >>> server.close()
     """
+
     def __init__(self, host, port, handle_func):
         self.host = host
         self.port = port
@@ -72,8 +73,10 @@ class TcpServer(object):
 
 if __name__ == '__main__':
     import time
+
     logging.basicConfig()
     logger.setLevel(logging.DEBUG)
+
 
     def func(conn, addr, *args):
         conn.send(b'You are connected.\n')
@@ -83,6 +86,7 @@ if __name__ == '__main__':
         if f == b'close\n':
             conn.close()
             server.close()
+
 
     server = TcpServer('0.0.0.0', 33334, handle_func=func)
     server.run()

@@ -4,23 +4,20 @@ import argparse
 import asyncio
 import logging
 import os
+import sys
 import textwrap
 import traceback
-import sys
 
-from fuocore.dispatch import Signal
-from fuocore.utils import is_port_used
-
+from feeluown import logger_config, __version__ as feeluown_version
 from feeluown.app import App, create_app
 from feeluown.cli import climain, oncemain, print_error, setup_cli_argparse
-from feeluown import logger_config, __version__ as feeluown_version
 from feeluown.consts import (
     HOME_DIR, USER_PLUGINS_DIR, DATA_DIR,
     CACHE_DIR, USER_THEMES_DIR, SONG_DIR, COLLECTIONS_DIR
 )
-
 from feeluown.fuoexec import fuoexec_load_rcfile
-
+from fuocore.dispatch import Signal
+from fuocore.utils import is_port_used
 
 logger = logging.getLogger(__name__)
 
@@ -50,9 +47,8 @@ def create_config():
     config.deffield('MODE', default=0x0000, desc='CLI or GUI 模式')
     config.deffield('THEME', default='auto', desc='auto/light/dark')
     config.deffield('MPV_AUDIO_DEVICE', default='auto', desc='MPV 播放设备')
-    config.deffield('COLLECTIONS_DIR',  desc='本地收藏所在目录')
-    config.deffield('FORCE_MAC_HOTKEY', desc='强制开启 macOS 全局快捷键功能',
-                    warn='Will be remove in version 3.0')
+    config.deffield('COLLECTIONS_DIR', desc='本地收藏所在目录')
+    config.deffield('FORCE_MAC_HOTKEY', desc='强制开启 macOS 全局快捷键功能', warn='Will be remove in version 3.0')
     config.deffield('LOG_TO_FILE', desc='将日志输出到文件中')
     config.deffield('AUDIO_SELECT_POLICY', default='hq<>')
     config.deffield('VIDEO_SELECT_POLICY', default='hd<>')
@@ -194,7 +190,7 @@ def run_forever(args, config):
     app = setup_app(args, config)
     if sys.platform.lower() == 'darwin':
         enable_mac_hotkey()
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_event_loop() # this loop has the same `id` as that defined in setup_app.
     try:
         if not config.MODE & App.GuiMode:
             if config.MODE & App.DaemonMode:

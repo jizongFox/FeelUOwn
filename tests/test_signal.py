@@ -54,4 +54,5 @@ class SignalTest(TestCase):
         @receiver(s)
         def f():
             pass
+
         self.assertTrue(mock_connect.called)

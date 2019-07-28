@@ -13,12 +13,9 @@ from fuocore.models import (
     AlbumModel,
     PlaylistModel,
     LyricModel,
-
     UserModel,
-
     ModelType,
 )
-
 
 _TYPE_NAME_MAP = {
     ModelType.song: 'Song',
