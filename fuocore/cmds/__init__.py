@@ -1,6 +1,6 @@
 import logging
 
-from fuocore.excs import FuocoreException
+from fuocore.excs import FuoException
 from .base import cmd_handler_mapping
 
 from .help import HelpHandler  # noqa
@@ -14,14 +14,15 @@ from .exec_ import ExecHandler  # noqa
 logger = logging.getLogger(__name__)
 
 
-class CmdException(FuocoreException):
+class CmdException(FuoException):
     pass
 
 
 class Cmd:
-    def __init__(self, action, *args, **kwargs):
+    def __init__(self, action, *args, options=None):
         self.action = action
         self.args = args
+        self.options = options
 
     def __str__(self):
         return 'action:{} args:{}'.format(self.action, self.args)

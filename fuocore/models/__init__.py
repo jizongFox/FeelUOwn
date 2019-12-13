@@ -1,9 +1,16 @@
 # -*- coding: utf-8 -*-
 
-from enum import IntEnum
 import logging
+from enum import IntEnum, Enum
 
 from fuocore.media import MultiQualityMixin, Quality
+from fuocore.reader import SequentialReader as GeneratorProxy  # noqa, for backward compatible
+
+__all__ = (
+    'resolve',
+    'reverse',
+    'Resolver',
+)
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +29,67 @@ class ModelType(IntEnum):
     lyric = 5
 
     user = 17
+
+
+class SearchType(Enum):
+    pl = 'playlist'
+    al = 'album'
+    ar = 'artist'
+    so = 'song'
+
+    @classmethod
+    def parse(cls, obj):
+        """get member from object
+
+        :param obj: string or SearchType member
+        :return: SearchType member
+
+        >>> SearchType.parse('playlist')
+        <SearchType.pl: 'playlist'>
+        >>> SearchType.parse(SearchType.pl)
+        <SearchType.pl: 'playlist'>
+        >>> SearchType.parse('xxx')
+        Traceback (most recent call last):
+          ...
+        ValueError: 'xxx' is not a valid SearchType value
+        """
+        if isinstance(obj, SearchType):
+            return obj
+
+        type_aliases_map = {
+            cls.pl: ('playlist', 'pl'),
+            cls.al: ('album', 'al'),
+            cls.ar: ('artist', 'ar'),
+            cls.so: ('song', 'so')
+        }
+        for type_, aliases in type_aliases_map.items():
+            if obj in aliases:
+                return type_
+        raise ValueError("'%s' is not a valid SearchType value" % obj)
+
+    @classmethod
+    def batch_parse(cls, obj):
+        """get list of member from obj
+
+        :param obj: obj can be string, list of string or list of member
+        :return: list of member
+
+        >>> SearchType.batch_parse('pl,ar')
+        [<SearchType.pl: 'playlist'>, <SearchType.ar: 'artist'>]
+        >>> SearchType.batch_parse(['pl', 'ar'])
+        [<SearchType.pl: 'playlist'>, <SearchType.ar: 'artist'>]
+        >>> SearchType.batch_parse('al')
+        [<SearchType.al: 'album'>]
+        >>> SearchType.batch_parse(SearchType.al)
+        [<SearchType.al: 'album'>]
+        >>> SearchType.batch_parse([SearchType.al])
+        [<SearchType.al: 'album'>]
+        """
+        if isinstance(obj, SearchType):
+            return [obj]
+        if isinstance(obj, str):
+            return [cls.parse(s) for s in obj.split(',')]
+        return [cls.parse(s) for s in obj]
 
 
 class ModelStage(IntEnum):
@@ -57,6 +125,7 @@ class ModelMetadata(object):
                  fields=None,
                  fields_display=None,
                  fields_no_get=None,
+                 paths=None,
                  allow_get=False,
                  allow_batch=False,
                  **kwargs):
@@ -70,6 +139,7 @@ class ModelMetadata(object):
         self.fields = fields or []
         self.fields_display = fields_display or []
         self.fields_no_get = fields_no_get or []
+        self.paths = paths or []
         self.allow_get = allow_get
         self.allow_batch = allow_batch
         for key, value in kwargs.items():
@@ -78,7 +148,6 @@ class ModelMetadata(object):
 
 class display_property:
     """Model 的展示字段的描述器"""
-
     def __init__(self, name):
         #: display 属性对应的真正属性的名字
         self.name_real = name
@@ -109,7 +178,8 @@ class ModelMeta(type):
 
         kind_fields_map = {'fields': [],
                            'fields_display': [],
-                           'fields_no_get': []}
+                           'fields_no_get': [],
+                           'paths': []}
         meta_kv = {}  # 实例化 ModelMetadata 的 kv 对
         for _meta in _metas:
             for kind, fields in kind_fields_map.items():
@@ -134,6 +204,7 @@ class ModelMeta(type):
         fields_all = list(set(kind_fields_map['fields']))
         fields_display = list(set(kind_fields_map['fields_display']))
         fields_no_get = list(set(kind_fields_map['fields_no_get']))
+        paths = list(set(kind_fields_map['paths']))
 
         for field in fields_display:
             setattr(klass, field + '_display', display_property(field))
@@ -145,7 +216,11 @@ class ModelMeta(type):
                                     fields=fields_all,
                                     fields_display=fields_display,
                                     fields_no_get=fields_no_get,
+                                    paths=paths,
                                     **meta_kv)
+        # FIXME: theoretically, different provider can share same model,
+        # so source field should be a instance attribute instead of class attribute.
+        # however, we don't have enough time to fix this whole design.
         klass.source = provider.identifier if provider is not None else None
         # use meta attribute instead of _meta
         klass.meta = klass._meta
@@ -168,11 +243,15 @@ class Model(metaclass=ModelMeta):
     """
 
     def __init__(self, obj=None, **kwargs):
-        for field in self._meta.fields:
+        for field in self.meta.fields:
             setattr(self, field, getattr(obj, field, None))
 
+        # source should be a instance attribute although it is not temporarily
+        if obj is not None:
+            self.source = obj.source
+
         for k, v in kwargs.items():
-            if k in self._meta.fields:
+            if k in self.meta.fields:
                 setattr(self, k, v)
 
 
@@ -229,11 +308,11 @@ class BaseModel(Model):
             return value
 
         if name in cls.meta.fields \
-                and name not in cls.meta.fields_no_get \
-                and value is None \
-                and cls.meta.allow_get \
-                and self.stage < ModelStage.gotten \
-                and self.exists != ModelExistence.no:
+           and name not in cls.meta.fields_no_get \
+           and value is None \
+           and cls.meta.allow_get \
+           and self.stage < ModelStage.gotten \
+           and self.exists != ModelExistence.no:
 
             # debug snippet: show info of the caller that trigger the model.get call
             #
@@ -250,7 +329,7 @@ class BaseModel(Model):
             obj = cls.get(self.identifier)
             if obj is not None:
                 for field in cls.meta.fields:
-                    if field in ('identifier',):
+                    if field in ('identifier', ):
                         continue
                     # 这里不能使用 getattr，否则有可能会无限 get
                     fv = object.__getattribute__(obj, field)
@@ -294,8 +373,8 @@ class ArtistModel(BaseModel):
     class Meta:
         model_type = ModelType.artist.value
         fields = ['name', 'cover', 'songs', 'desc', 'albums']
-        #: alpha
         allow_create_songs_g = False
+        allow_create_albums_g = False
 
     def __str__(self):
         return 'fuo://{}/artists/{}'.format(self.source, self.identifier)
@@ -303,6 +382,57 @@ class ArtistModel(BaseModel):
     def create_songs_g(self):
         """create songs generator(alpha)"""
         pass
+
+    def create_albums_g(self):
+        pass
+
+
+class AlbumType(Enum):
+    """Album type enumeration
+
+    中文解释::
+
+        Single 和 EP 会有一些交集，在展示时，会在一起展示，比如 Singles & EPs。
+        Compilation 和 Retrospective 也会有交集，展示时，也通常放在一起，统称“合辑”。
+
+    References:
+
+    1. https://www.zhihu.com/question/22888388/answer/33255107
+    2. https://zh.wikipedia.org/wiki/%E5%90%88%E8%BC%AF
+    """
+    standard = 'standard'
+
+    single = 'single'
+    ep = 'EP'
+
+    live = 'live'
+
+    compilation = 'compilation'
+    retrospective = 'retrospective'
+
+    @classmethod
+    def guess_by_name(cls, name):
+        """guess album type by its name"""
+
+        # album name which contains following string are `Single`
+        #   1. ' - Single'  6+3=9
+        #   2. '(single)'   6+2=8
+        #   3. '（single）'  6+2=8
+        if 'single' in name[-9:].lower():
+            return cls.single
+
+        # ' - EP'
+        if 'ep' in name[-5:].lower():
+            return cls.ep
+
+        if 'live' in name or '演唱会' in name:
+            return cls.live
+
+        # '精选集', '精选'
+        if '精选' in name[-3:]:
+            return cls.retrospective
+
+        return cls.standard
 
 
 class AlbumModel(BaseModel):
@@ -312,7 +442,17 @@ class AlbumModel(BaseModel):
         # TODO: 之后可能需要给 Album 多加一个字段用来分开表示 artist 和 singer
         # 从意思上来区分的话：artist 是专辑制作人，singer 是演唱者
         # 像虾米音乐中，它即提供了专辑制作人信息，也提供了 singer 信息
-        fields = ['name', 'cover', 'songs', 'artists', 'desc']
+        fields = ['name', 'cover', 'songs', 'artists', 'desc', 'type']
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        if kwargs.get('type') is None:
+            name = kwargs.get('name')
+            if name:
+                self.type = AlbumType.guess_by_name(name)
+            else:
+                self.type = AlbumType.standard
 
     def __str__(self):
         return 'fuo://{}/albums/{}'.format(self.source, self.identifier)
@@ -329,7 +469,6 @@ class LyricModel(BaseModel):
     :param str content: lyric content
     :param str trans_content: translated lyric content
     """
-
     class Meta:
         model_type = ModelType.lyric.value
         fields = ['song', 'content', 'trans_content']
@@ -415,14 +554,13 @@ class SearchModel(BaseModel):
 
     TODO: support album and artist
     """
-
     class Meta:
         model_type = ModelType.dummy.value
 
         # XXX: songs should be a empty list instead of None
         # when there is not song.
-        fields = ['q', 'songs']
-        fields_no_get = ['q']
+        fields = ['q', 'songs', 'playlists', 'artists', 'albums']
+        fields_no_get = ['q', 'songs', 'playlists', 'artists', 'albums']
 
     def __str__(self):
         return 'fuo://{}?q={}'.format(self.source, self.q)
@@ -438,7 +576,6 @@ class UserModel(BaseModel):
     :param fav_albums: albums collected by user
     :param fav_artists: artists collected by user
     """
-
     class Meta:
         allow_fav_songs_add = False
         allow_fav_songs_remove = False
@@ -483,3 +620,10 @@ class UserModel(BaseModel):
 
     def remove_from_fav_artists(self, artist_id):
         pass
+
+
+from .uri import (
+    resolve,
+    reverse,
+    Resolver,
+)  # noqa

@@ -10,7 +10,9 @@ fuocore.cmds.helper
 TODO: 让代码长得更好看
 """
 
-from fuocore.protocol import get_url
+from itertools import chain
+
+from fuocore.models.uri import reverse
 
 
 def _fit_text(text, length, filling=True):
@@ -64,7 +66,7 @@ def show_song(song, uri_length=None, brief=False, fetch=False):
     title = _fit_text(song.title if fetch else song.title_display, 18, filling=False)
     album_name = song.album_name if fetch else song.album_name_display
 
-    song_uri = get_url(song)
+    song_uri = reverse(song)
     if uri_length is not None:
         song_uri = _fit_text(song_uri, uri_length)
 
@@ -77,8 +79,8 @@ def show_song(song, uri_length=None, brief=False, fetch=False):
         return s
 
     # XXX: 这个操作可能会产生网络请求
-    album_uri = get_url(song.album)
-    artists_uri = ','.join(get_url(artist) for artist in song.artists)
+    album_uri = reverse(song.album)
+    artists_uri = ','.join(reverse(artist) for artist in song.artists)
     msgs = (
         'provider:     {}'.format(song.source),
         '     uri:     {}'.format(song_uri),
@@ -92,12 +94,16 @@ def show_song(song, uri_length=None, brief=False, fetch=False):
 
 
 def show_songs(songs):
-    uri_length = max((len(get_url(song)) for song in songs)) if songs else None
+    uri_length = max((len(reverse(song)) for song in songs)) if songs else None
     return '\n'.join([show_song(song, uri_length=uri_length, brief=True)
                       for song in songs])
 
 
-def show_artist(artist):
+def show_artist(artist, brief=False):
+    if brief:
+        return '{uri}\t# {name}'.format(
+            uri=reverse(artist),
+            name=artist.name)
     msgs = [
         'provider:      {}'.format(artist.source),
         'identifier:    {}'.format(artist.identifier),
@@ -112,6 +118,13 @@ def show_artist(artist):
 
 
 def show_album(album, brief=False):
+    if brief:
+        return '{uri}\t# {name} - {artists_name}'.format(
+            uri=reverse(album),
+            name=album.name,
+            artists_name=album.artists_name
+        )
+
     msgs = [
         'provider:      {}'.format(album.source),
         'identifier:    {}'.format(album.identifier),
@@ -123,11 +136,10 @@ def show_album(album, brief=False):
         artists_name = ','.join([artist.name for artist in artists])
         msgs_artists = ['artists:       {}\t#{}'.format(artists_id, artists_name)]
         msgs += msgs_artists
-    if not brief:
-        msgs_songs_header = ['songs::']
-        msgs_songs = ['\t' + each for each in show_songs(album.songs).split('\n')]
-        msgs += msgs_songs_header
-        msgs += msgs_songs
+    msgs_songs_header = ['songs::']
+    msgs_songs = ['\t' + each for each in show_songs(album.songs).split('\n')]
+    msgs += msgs_songs_header
+    msgs += msgs_songs
     return '\n'.join(msgs)
 
 
@@ -146,6 +158,11 @@ def show_playlist(playlist, brief=False):
     return content
 
 
+def show_playlists(playlists):
+    return '\n'.join((show_playlist(playlist, brief=True)
+                      for playlist in playlists))
+
+
 def show_user(user):
     parts = [
         'name:        {}'.format(user.name),
@@ -153,3 +170,17 @@ def show_user(user):
     ]
     parts += ['\t' + show_playlist(p, brief=True) for p in user.playlists]
     return '\n'.join(parts)
+
+
+def show_search(search):
+    """show search result model"""
+
+    song_part = map(lambda so: show_song(so, brief=True),
+                    search.songs or [])
+    pl_part = map(lambda pl: show_playlist(pl, brief=True),
+                  search.playlists or [])
+    ar_part = map(lambda ar: show_artist(ar, brief=True),
+                  search.artists or [])
+    al_part = map(lambda al: show_album(al, brief=True),
+                  search.albums or [])
+    return '\n'.join(chain(song_part, ar_part, al_part, pl_part))

@@ -8,6 +8,7 @@ from socket import socket, AF_INET, SOCK_STREAM
 
 from fuocore.cmds import exec_cmd, Cmd
 from fuocore.cmds.helpers import show_song
+from fuocore.protocol import Parser
 from feeluown.consts import CACHE_DIR
 
 
@@ -34,26 +35,51 @@ def setup_cli_argparse(parser):
         formatter_class=argparse.RawTextHelpFormatter
     )
     show_parser = subparsers.add_parser('show')
-    search_parser = subparsers.add_parser('search')
+    search_parser = subparsers.add_parser(
+        'search',
+        description=textwrap.dedent('''\
+        Example:
+            - fuo search hero
+            - fuo search 李宗盛 source=xiami,type=artist
+            - fuo search 李宗盛 [source=xiami,type=artist]
+            - fuo search lizongsheng "source='xiami,qq',type=artist"
+            - fuo search 李宗盛 "[source='xiami,qq',type=artist]"
+        '''),
+        formatter_class=argparse.RawTextHelpFormatter
+    )
 
-    pause_parser = subparsers.add_parser('pause')
-    resume_parser = subparsers.add_parser('resume')
-    toggle_parser = subparsers.add_parser('toggle')
-    stop_parser = subparsers.add_parser('stop')
-    next_parser = subparsers.add_parser('next')
-    previous_parser = subparsers.add_parser('previous')
-    list_parser = subparsers.add_parser('list')
-    clear_parser = subparsers.add_parser('clear')
+    subparsers.add_parser('pause')
+    subparsers.add_parser('resume')
+    subparsers.add_parser('toggle')
+    subparsers.add_parser('stop')
+    subparsers.add_parser('next')
+    subparsers.add_parser('previous')
+    subparsers.add_parser('list')
+    subparsers.add_parser('clear')
+    subparsers.add_parser('status')
     remove_parser = subparsers.add_parser('remove')
     add_parser = subparsers.add_parser('add')
-    status_parser = subparsers.add_parser('status')
     exec_parser = subparsers.add_parser('exec')
 
     play_parser.add_argument('uri', help='歌曲 uri')
     show_parser.add_argument('uri', help='显示资源详细信息')
     remove_parser.add_argument('uri', help='从播放列表移除歌曲')
-    add_parser.add_argument('uri', help='添加歌曲到播放列表')
+    add_parser.add_argument('uri', nargs='?', help='添加歌曲到播放列表')
     search_parser.add_argument('keyword', help='搜索关键字')
+    search_parser.add_argument('options', nargs='?', help='命令选项 (e.g., type=playlist)')
+    """
+    FIXME: maybe we should redesign options argument or add another way
+           to make following examples works
+
+    1. search zjl source='artist,album'
+
+    if quote in options str, bash will remove it, the string
+    Python reads will become::
+
+      search zjl source=artist,album
+
+    though user can write this: search zjl source=\'artist,album\'.
+    """
     exec_parser.add_argument('code', nargs='?', help='Python 代码')
 
 
@@ -61,21 +87,60 @@ cmd_handler_mapping = {}
 
 
 class Request:
-    def __init__(self, cmd, *args, **options):
+    def __init__(self, cmd, *args, options_str=None, heredoc=None):
+        """cli request object
+
+        :param string cmd: cmd name (e.g. search)
+        :param list args: cmd arguments
+        :param string options_str: cmd options
+        :param string heredoc:
+
+        >>> req = Request('search',
+        ...               'linkin park',
+        ...               options_str='[type=pl,source=xiami]',)
+        >>> req.raw
+        'search "linkin park" [type=pl,source=xiami]'
+        >>> req.to_cmd().options
+        '{"type": "pl", "source": "xiami"}'
+        """
         self.cmd = cmd
         self.args = args
-        self.options = options
+        self.options_str = options_str
+        self.heredoc = heredoc
 
     @property
     def raw(self):
-        text = self.cmd
-        if self.args:
-            text += ' '
-            text += ' '.join(self.args)
-        return text
+        """generate syntactically correct request"""
+
+        def escape(value):
+            # if value is not furi/float/integer, than we surround the value
+            # with double quotes
+            from fuocore.protocol.lexer import furi_re, integer_re, float_re
+
+            regex_list = (furi_re, float_re, integer_re)
+            for regex in regex_list:
+                if regex.match(value):
+                    break
+            else:
+                value = '"{}"'.format(value)
+            return value
+
+        options_str = self.options_str
+        raw = '{cmd} {args_str} {options_str}'.format(
+            cmd=self.cmd,
+            args_str=' '.join((escape(arg) for arg in self.args)),
+            options_str=(options_str if options_str else '')
+        )
+        if self.heredoc is not None:
+            raw += ' <<EOF\n{}\nEOF\n\n'.format(self.heredoc)
+        return raw
 
     def to_cmd(self):
-        return Cmd(self.cmd, *self.args)
+        if self.options_str:
+            options = Parser(self.options_str).parse_cmd_options()
+        else:
+            options = {}
+        return Cmd(self.cmd, *self.args, options=options)
 
     def __str__(self):
         return '{} {}'.format(self.cmd, self.args)
@@ -149,7 +214,7 @@ class BaseHandler(metaclass=HandlerMeta):
         self._req = Request(args.cmd)
 
     def before_request(self):
-        pass
+        """before request hook"""
 
     def get_req(self):
         return self._req
@@ -171,14 +236,6 @@ class SimpleHandler(BaseHandler):
     )
 
 
-class OneArgHandler(BaseHandler):
-    cmds = ('remove', )
-
-    def before_request(self):
-        if self.args.cmd == 'remove':
-            self._req.args = (self.args.uri, )
-
-
 class HandlerWithWriteListCache(BaseHandler):
     cmds = ('list', 'search')
 
@@ -186,6 +243,13 @@ class HandlerWithWriteListCache(BaseHandler):
         cmd = self.args.cmd
         if cmd == 'search':
             self._req.args = (self.args.keyword, )
+            options_str = self.args.options
+            if not options_str:
+                return
+            if options_str.startswith('[') and options_str.endswith(']'):
+                self._req.options_str = options_str
+            else:
+                self._req.options_str = '[{}]'.format(options_str)
 
     def process_resp(self, resp):
         if resp.code != 'OK' or not resp.content:
@@ -201,7 +265,7 @@ class HandlerWithWriteListCache(BaseHandler):
 
 
 class HandlerWithReadListCache(BaseHandler):
-    cmds = ('show', 'play')
+    cmds = ('show', 'play', 'remove')
 
     def before_request(self):
         uri = self.args.uri
@@ -214,7 +278,7 @@ class HandlerWithReadListCache(BaseHandler):
                 i = 0
                 for line in f:
                     if i == lineno:
-                        uri = line
+                        uri = line.split('#')[0].strip()
                         break
                     i += 1
         self._req.args = (uri, )
@@ -230,7 +294,7 @@ class AddHandler(BaseHandler):
                 furi_list.append(line.strip())
         else:
             furi_list = [self.args.uri]
-        self._req.args = (','.join(furi_list), )
+        self._req.args = (' '.join(furi_list), )
 
 
 class ExecHandler(BaseHandler):
@@ -240,7 +304,9 @@ class ExecHandler(BaseHandler):
         code = self.args.code
         if code is None:
             code = sys.stdin.read()
-        self._req.args = ('<<EOF\n{}\nEOF\n\n'.format(code), )
+            self._req.heredoc = code
+        else:
+            self._req.args = (code, )
 
 
 class OnceClient:
@@ -259,6 +325,12 @@ class OnceClient:
 
 
 def dispatch(args, client):
+    if '"' in (getattr(args, 'cli', '') or '') \
+       or '"' in (getattr(args, 'code', '') or '') \
+       or '"' in (getattr(args, 'keyword', '') or ''):
+        print_error("command args must not contain charactor '\"'")
+        return
+
     HandlerCls = cmd_handler_mapping[args.cmd]
     handler = HandlerCls(args)
     resp = handler.before_request()
@@ -284,18 +356,11 @@ def oncemain(app, args):
         else:
             print('Playing: {}'.format(app.player.current_media))
         loop = asyncio.get_event_loop()
-        try:
-            # mpv wait_for_playback will wait until one song is finished,
-            # if we have multiple song to play, this will not work well.
-            future = loop.run_in_executor(
-                None,
-                # pylint: disable=protected-access
-                app.player._mpv.wait_for_playback)
-            loop.run_until_complete(future)
-        except KeyboardInterrupt:
-            pass
-        finally:
-            loop.stop()
-            app.shutdown()
-            loop.close()
-    sys.exit(0)
+        # mpv wait_for_playback will wait until one song is finished,
+        # if we have multiple song to play, this will not work well.
+        future = loop.run_in_executor(
+            None,
+            # pylint: disable=protected-access
+            app.player._mpv.wait_for_playback)
+        return future
+    return None

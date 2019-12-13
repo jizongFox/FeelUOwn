@@ -5,7 +5,6 @@ import logging
 import threading
 from functools import partial
 
-from fuocore import aio
 from fuocore.media import Media
 from fuocore.player import MpvPlayer, Playlist as _Playlist
 
@@ -35,39 +34,58 @@ class Playlist(_Playlist):
 
     @_Playlist.current_song.setter
     def current_song(self, song):
-        """如果歌曲 url 无效，则尝试从其它平台找一个替代品"""
-        if song is None or \
-           (song.meta.support_multi_quality and song.list_quality()) or \
-           song.url:
-            _Playlist.current_song.fset(self, song)
-            return
-        self.mark_as_bad(song)
+        """if song has not valid medai, we find a replacement in other providers"""
 
-        logger.info('song:%s is invalid, try to get standby', song)
-        if self._task is not None:
-            logger.info('try to cancel another find-song-standby task')
-            self._task.cancel()
-            self._task = None
+        def validate_song(song):
+            # TODO: except specific exception
+            valid_quality_list = []
+            if song.meta.support_multi_quality:
+                try:
+                    valid_quality_list = song.list_quality()
+                except:  # noqa
+                    logger.exception('[playlist] check song quality list failed')
+            try:
+                url = song.url
+            except:  # noqa
+                logger.exception('[playlist] get song url failed')
+                url = ''
+            return bool(valid_quality_list or url)
 
-        def _current_song_setter(task):
-            nonlocal song
+        def find_song_standby_cb(task):
+            final_song = song
             try:
                 songs = task.result()
             except asyncio.CancelledError:
                 logger.debug('badsong-autoreplace task is cancelled')
             else:
                 if songs:
-                    # DOUBT: how Python closures works?
-                    song = songs[0]
+                    final_song = songs[0]
+                    logger.info('find song standby success: %s', final_song)
+                else:
+                    logger.info('find song standby failed: not found')
+                _Playlist.current_song.fset(self, final_song)
+
+        def validate_song_cb(future):
+            try:
+                valid = future.result()
+            except:  # noqa
+                valid = False
+            if valid:
                 _Playlist.current_song.fset(self, song)
-            finally:
-                self._task = None
+                return
+            self.mark_as_bad(song)
+            self._app.show_msg('{} is invalid, try to find standby'.format(str(song)))
+            task_spec = self._app.task_mgr.get_or_create('find-song-standby')
+            task = task_spec.bind_coro(self._app.library.a_list_song_standby(song))
+            task.add_done_callback(find_song_standby_cb)
 
-        def fetch_in_bg():
-            self._task = aio.create_task(self._app.library.a_list_song_standby(song))
-            self._task.add_done_callback(_current_song_setter)
+        if song is None:
+            _Playlist.current_song.fset(self, song)
+            return
 
-        call_soon(fetch_in_bg, self._loop)
+        task_spec = self._app.task_mgr.get_or_create('validate-song')
+        future = task_spec.bind_blocking_io(validate_song, song)
+        future.add_done_callback(validate_song_cb)
 
 
 class Player(MpvPlayer):
@@ -82,7 +100,7 @@ class Player(MpvPlayer):
         def callback(future):
             try:
                 media, quality = future.result()
-            except Exception as e:
+            except Exception:  # noqa
                 logger.exception('prepare media data failed')
             else:
                 media = Media(media) if media else None
@@ -91,7 +109,7 @@ class Player(MpvPlayer):
         if song.meta.support_multi_quality:
             fetch = partial(song.select_media, self._app.config.AUDIO_SELECT_POLICY)
         else:
-            fetch = lambda: (song.url, None)
+            fetch = lambda: (song.url, None)  # noqa
 
         def fetch_in_bg():
             future = self._loop.run_in_executor(None, fetch)

@@ -4,7 +4,7 @@
 .iml
 .settings
 
-
+venvs
 *.mp3
 
 *.pyc
@@ -74,7 +74,5 @@ feeluown.egg-info/
 *.dat
 htmlcov/
 
-zzz*.py
-/venvs/
-/.mypy_cache/
-/feeluown.egg-info/
+# vscode
+.vscode/

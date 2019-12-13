@@ -5,6 +5,8 @@ from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QFontDatabase
 from PyQt5.QtWidgets import QLineEdit, QSizePolicy
 
+from feeluown.fuoexec import fuoexec
+
 
 class MagicBox(QLineEdit):
     """读取用户输入，解析执行
@@ -74,7 +76,7 @@ class MagicBox(QLineEdit):
     def _search_library(self, q):
         songs = []
         for result in self._app.library.search(q):
-            songs.extend(result.songs)
+            songs.extend(result.songs or [])
         self._app.ui.songs_table_container.show_songs(songs)
 
     def _exec_code(self, code):
@@ -83,7 +85,8 @@ class MagicBox(QLineEdit):
         sys.stderr = output
         sys.stdout = output
         try:
-            self._app.exec_(code)
+            obj = compile(code, '<string>', 'single')
+            fuoexec(obj)
         except Exception as e:
             print(str(e))
         finally:

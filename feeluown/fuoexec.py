@@ -32,7 +32,7 @@ def fuoexec_load_rcfile(config):
         source(DEFAULT_RCFILE_PATH)
 
 
-def fuoexec_after_app_attrs_attached(app):
+def fuoexec_init(app):
     signals_slots_mgr.initialize(app)
 
 
@@ -89,7 +89,7 @@ class SignalsSlotsManager:
                     func = fuoexec_F(slot) if isinstance(slot, str) else slot
                     try:
                         func(*args, **kwargs)
-                    except:  # pylint: disable=bare-except
+                    except:  # noqa, pylint: disable=bare-except
                         logger.exception('error during calling slot:%s')
             return signal_proxy
 

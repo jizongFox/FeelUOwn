@@ -8,12 +8,13 @@ logger = logging.getLogger(__name__)
 
 
 class FuoServer:
-    def __init__(self, app, loop):
+    def __init__(self, app):
         self._app = app
-        self._loop = loop
+        self._loop = None
 
     async def run(self, host='0.0.0.0', port=23333):
         loop = asyncio.get_event_loop()
+        self._loop = loop
         await loop.create_server(self.protocol_factory, host, port)
         logger.info('Fuo daemon run at {}:{}'.format(host, port))
 
@@ -22,7 +23,7 @@ class FuoServer:
                                  loop=self._loop)
 
     def handle_req(self, req, session=None):
-        cmd = Cmd(req.cmd, *req.cmd_args)
+        cmd = Cmd(req.cmd, *req.cmd_args, options=req.cmd_options)
         success, msg = exec_cmd(
             cmd,
             library=self._app.library,
